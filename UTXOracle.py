@@ -77,7 +77,7 @@ if conf         != "":
 # this many times through out the program. The function will return the 
 # answer it gets from your node with the "command" that you asked it for.
 # If we don't get an answer, the problem is likely that you don't have
-# sever=1 in your bitcoin conf file.
+# server=1 in your bitcoin conf file.
 
 
 
