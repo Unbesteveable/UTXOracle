@@ -499,7 +499,7 @@ while target_day_of_month == day_of_month:
 
 
 
-# This sectoins aims to remove non-usd denominated samples from the bell curve
+# This section is intended to remove non-usd denominated samples from the bell curve
 # of outputs. The two primary steps are to remove very large/small outputs
 # and then to remove round btc amounts. We don't set the round btc amounts
 # to zero because if the USD price of bitcoin is also round, then round
