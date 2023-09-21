@@ -161,7 +161,7 @@ latest_price_date = latest_price_day.strftime("%Y-%m-%d")
 
 
 # tell the user that a connection has been made and state the lastest price date
-print("Connected to local noode at block #:\t"+str(block_count))
+print("Connected to local node at block #:\t"+str(block_count))
 print("Latest available price date is: \t"+latest_price_date)
 print("Earliest available price date is:\t2020-07-26  (full node)")
 
