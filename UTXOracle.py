@@ -161,7 +161,7 @@ latest_price_date = latest_price_day.strftime("%Y-%m-%d")
 
 
 # tell the user that a connection has been made and state the lastest price date
-print("Connected to local noode at block #:\t"+str(block_count))
+print("Connected to local node at block #:\t"+str(block_count))
 print("Latest available price date is: \t"+latest_price_date)
 print("Earliest available price date is:\t2020-07-26  (full node)")
 
@@ -499,7 +499,7 @@ while target_day_of_month == day_of_month:
 
 
 
-# This sectoins aims to remove non-usd denominated samples from the bell curve
+# This section is intended to remove non-usd denominated samples from the bell curve
 # of outputs. The two primary steps are to remove very large/small outputs
 # and then to remove round btc amounts. We don't set the round btc amounts
 # to zero because if the USD price of bitcoin is also round, then round
