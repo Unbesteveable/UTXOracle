@@ -14,7 +14,7 @@
 # price of bitcoin. The call to your node is the standard "bitcoin-cli". The
 # date and price ranges expected to work for this version are from 2020-7-26 
 # and from $10,000 to $100,000
-
+import os
 print("UTXOracle version 6\n")
 
 
@@ -41,6 +41,7 @@ rpcookiefile = ""
 rpcconnect   = ""
 rpcport      = ""
 conf         = ""
+lastonly    = (os.getenv('LASTONLY', 'False').upper() == 'TRUE')
 
 
 #add the configuration options to the bitcoin-cli call
@@ -160,10 +161,11 @@ latest_price_day = datetime.fromtimestamp(yesterday_seconds,tz=timezone.utc)
 latest_price_date = latest_price_day.strftime("%Y-%m-%d")
 
 
-# tell the user that a connection has been made and state the lastest price date
-print("Connected to local noode at block #:\t"+str(block_count))
-print("Latest available price date is: \t"+latest_price_date)
-print("Earliest available price date is:\t2020-07-26  (full node)")
+print("Connected to local node at block #:\t"+str(block_count))
+if not lastonly:
+    # tell the user that a connection has been made and state the latest price date
+    print("Latest available price date is: \t"+latest_price_date)
+    print("Earliest available price date is:\t2020-07-26  (full node)")
 
 
 
@@ -181,44 +183,44 @@ print("Earliest available price date is:\t2020-07-26  (full node)")
 
 ###############################################################################  
 
-# Part 3)  Ask for the desired date to estimate the price      
+# Part 3)  Ask for the desired date to estimate the price (for full day)
 
 ###############################################################################  
 
+if not lastonly:
+    #use python input to get date from the user
+    date_entered = input("\nEnter date in YYYY-MM-DD (or 'q' to quit):")
 
-#use python input to get date from the user
-date_entered = input("\nEnter date in YYYY-MM-DD (or 'q' to quit):")
-
-# quit if desired
-if date_entered == 'q':
-    exit()
-
-#check to see if this is a good date
-try:
-    year  = int(date_entered.split('-')[0])
-    month = int(date_entered.split('-')[1])
-    day = int(date_entered.split('-')[2])
-    
-    #make sure this date is less than the max date
-    datetime_entered = datetime(year,month,day,0,0,0,tzinfo=timezone.utc)
-    if datetime_entered.timestamp() >= latest_utc_midnight.timestamp():
-        print("\nThe date entered is not before the current date, please try again")
-        exit()
-    
-    #make sure this date is after the min date
-    july_26_2020 = datetime(2020,7,26,0,0,0,tzinfo=timezone.utc)
-    if datetime_entered.timestamp() < july_26_2020.timestamp():
-        print("\nThe date entered is before 2020-07-26, please try again")
+    # quit if desired
+    if date_entered == 'q':
         exit()
 
-except:
-    print("\nError interpreting date. Likely not entered in format YYYY-MM-DD")
-    print("Please try again\n")
-    exit()
+    #check to see if this is a good date
+    try:
+        year  = int(date_entered.split('-')[0])
+        month = int(date_entered.split('-')[1])
+        day = int(date_entered.split('-')[2])
 
-#get the seconds and printable date string of date entered
-price_day_seconds = int(datetime_entered.timestamp())
-price_day_date_utc = datetime_entered.strftime("%B %d, %Y")
+        #make sure this date is less than the max date
+        datetime_entered = datetime(year,month,day,0,0,0,tzinfo=timezone.utc)
+        if datetime_entered.timestamp() >= latest_utc_midnight.timestamp():
+            print("\nThe date entered is not before the current date, please try again")
+            exit()
+
+        #make sure this date is after the min date
+        july_26_2020 = datetime(2020,7,26,0,0,0,tzinfo=timezone.utc)
+        if datetime_entered.timestamp() < july_26_2020.timestamp():
+            print("\nThe date entered is before 2020-07-26, please try again")
+            exit()
+
+    except:
+        print("\nError interpreting date. Likely not entered in format YYYY-MM-DD")
+        print("Please try again\n")
+        exit()
+
+    #get the seconds and printable date string of date entered
+    price_day_seconds = int(datetime_entered.timestamp())
+    price_day_date_utc = datetime_entered.strftime("%B %d, %Y")
 
 
 
@@ -238,7 +240,7 @@ price_day_date_utc = datetime_entered.strftime("%B %d, %Y")
 
 ##############################################################################  
 
-# Part 4)  Hunt through blocks to find the first block on the target day      
+# Part 4)  Hunt through blocks to find the first block on the target day
 
 ##############################################################################  
 
@@ -247,73 +249,73 @@ price_day_date_utc = datetime_entered.strftime("%B %d, %Y")
 # specific time. Instead one must ask for a block, look at it's time, then estimate
 # the number of blocks to jump for the next guess. Rinse and repeat.
 
+if not lastonly:
+    #first estimate of the block height of the price day
+    seconds_since_price_day = latest_time_in_seconds - price_day_seconds
+    blocks_ago_estimate = round(144*float(seconds_since_price_day)/float(seconds_in_a_day))
+    price_day_block_estimate = block_count - blocks_ago_estimate
 
-#first estimate of the block height of the price day
-seconds_since_price_day = latest_time_in_seconds - price_day_seconds
-blocks_ago_estimate = round(144*float(seconds_since_price_day)/float(seconds_in_a_day))
-price_day_block_estimate = block_count - blocks_ago_estimate
-
-#check the time of the price day block estimate
-block_hash_b = Ask_Node(['getblockhash',str(price_day_block_estimate)])
-block_header_b = Ask_Node(['getblockheader',block_hash_b[:64],'true'])
-block_header = json.loads(block_header_b)
-time_in_seconds = block_header['time']
-
-#get new block estimate from the seconds difference using 144 blocks per day
-seconds_difference = time_in_seconds - price_day_seconds
-block_jump_estimate = round(144*float(seconds_difference)/float(seconds_in_a_day))
-
-#iterate above process until it oscillates around the correct block
-last_estimate = 0
-last_last_estimate = 0
-while block_jump_estimate >6 and block_jump_estimate != last_last_estimate:
-    
-    #when we osciallate around the correct block, last_last_estimate = block_jump_estimate
-    last_last_estimate = last_estimate
-    last_estimate = block_jump_estimate
-    
-    #get block header or new estimate
-    price_day_block_estimate = price_day_block_estimate-block_jump_estimate
+    #check the time of the price day block estimate
     block_hash_b = Ask_Node(['getblockhash',str(price_day_block_estimate)])
     block_header_b = Ask_Node(['getblockheader',block_hash_b[:64],'true'])
     block_header = json.loads(block_header_b)
-    
-    #check time of new block and get new block jump estimate
     time_in_seconds = block_header['time']
+
+    #get new block estimate from the seconds difference using 144 blocks per day
     seconds_difference = time_in_seconds - price_day_seconds
     block_jump_estimate = round(144*float(seconds_difference)/float(seconds_in_a_day))
-    
-#the oscillation may be over multiple blocks so we add/subtract single blocks 
-#to ensure we have exactly the first block of the target day
-if time_in_seconds > price_day_seconds:
-    
-    # if the estimate was after price day look at earlier blocks
-    while time_in_seconds > price_day_seconds:
-        
-        #decrement the block by one, read new block header, check time
-        price_day_block_estimate = price_day_block_estimate-1
+
+    #iterate above process until it oscillates around the correct block
+    last_estimate = 0
+    last_last_estimate = 0
+    while block_jump_estimate >6 and block_jump_estimate != last_last_estimate:
+
+        #when we osciallate around the correct block, last_last_estimate = block_jump_estimate
+        last_last_estimate = last_estimate
+        last_estimate = block_jump_estimate
+
+        #get block header or new estimate
+        price_day_block_estimate = price_day_block_estimate-block_jump_estimate
         block_hash_b = Ask_Node(['getblockhash',str(price_day_block_estimate)])
         block_header_b = Ask_Node(['getblockheader',block_hash_b[:64],'true'])
         block_header = json.loads(block_header_b)
-        time_in_seconds = block_header['time']
-        
-    #the guess is now perfectly the first block before midnight
-    price_day_block_estimate = price_day_block_estimate + 1
 
-# if the estimate was before price day look for later blocks
-elif time_in_seconds < price_day_seconds:
-    
-    while time_in_seconds < price_day_seconds:
-        
-        #increment the block by one, read new block header, check time
-        price_day_block_estimate = price_day_block_estimate+1
-        block_hash_b = Ask_Node(['getblockhash',str(price_day_block_estimate)])
-        block_header_b = Ask_Node(['getblockheader',block_hash_b[:64],'true'])
-        block_header = json.loads(block_header_b)
+        #check time of new block and get new block jump estimate
         time_in_seconds = block_header['time']
+        seconds_difference = time_in_seconds - price_day_seconds
+        block_jump_estimate = round(144*float(seconds_difference)/float(seconds_in_a_day))
 
-#assign the estimate as the price day block since it is correct now    
-price_day_block = price_day_block_estimate
+    #the oscillation may be over multiple blocks so we add/subtract single blocks
+    #to ensure we have exactly the first block of the target day
+    if time_in_seconds > price_day_seconds:
+
+        # if the estimate was after price day look at earlier blocks
+        while time_in_seconds > price_day_seconds:
+
+            #decrement the block by one, read new block header, check time
+            price_day_block_estimate = price_day_block_estimate-1
+            block_hash_b = Ask_Node(['getblockhash',str(price_day_block_estimate)])
+            block_header_b = Ask_Node(['getblockheader',block_hash_b[:64],'true'])
+            block_header = json.loads(block_header_b)
+            time_in_seconds = block_header['time']
+
+        #the guess is now perfectly the first block before midnight
+        price_day_block_estimate = price_day_block_estimate + 1
+
+    # if the estimate was before price day look for later blocks
+    elif time_in_seconds < price_day_seconds:
+
+        while time_in_seconds < price_day_seconds:
+
+            #increment the block by one, read new block header, check time
+            price_day_block_estimate = price_day_block_estimate+1
+            block_hash_b = Ask_Node(['getblockhash',str(price_day_block_estimate)])
+            block_header_b = Ask_Node(['getblockheader',block_hash_b[:64],'true'])
+            block_header = json.loads(block_header_b)
+            time_in_seconds = block_header['time']
+
+    #assign the estimate as the price day block since it is correct now
+    price_day_block = price_day_block_estimate
 
 
 
@@ -395,24 +397,26 @@ for n in range(0,number_of_bins):
 # from those blocks and places each tx output value into the bell curve
 
 
+from math import log10  # built in math functions needed logarithms
 
+if not lastonly:
+    # print header line of update table
+    print("\nReading all blocks on " + price_day_date_utc + "...")
+    print("\nThis will take a few minutes (~144 blocks)...")
+    print("\nHeight\tTime(utc)\t\tTime(32bit)\t\t  Completion %")
 
-from math import log10 #built in math functions needed logarithms
+    # get the full data of the first target day block from the node
+    block_height = price_day_block
+else:
+    block_height = block_count
 
-#print header line of update table
-print("\nReading all blocks on "+price_day_date_utc+"...")
-print("\nThis will take a few minutes (~144 blocks)...")
-print("\nHeight\tTime(utc)\t\tTime(32bit)\t\t  Completion %")
-
-#get the full data of the first target day block from the node
-block_height=price_day_block
-block_hash_b = Ask_Node(['getblockhash',str(block_height)])
-block_b = Ask_Node(['getblock',block_hash_b[:64],'2'])
+block_hash_b = Ask_Node(['getblockhash', str(block_height)])
+block_b = Ask_Node(['getblock', block_hash_b[:64], '2'])
 block = json.loads(block_b)
 
-#get the time of the first block
+# get the time of the first block
 time_in_seconds = int(block['time'])
-time_datetime = datetime.fromtimestamp(time_in_seconds,tz=timezone.utc)
+time_datetime = datetime.fromtimestamp(time_in_seconds, tz=timezone.utc)
 time_utc = time_datetime.strftime("%H:%M:%S")
 hour_of_day = int(time_datetime.strftime("%H"))
 minute_of_hour = float(time_datetime.strftime("%M"))
@@ -420,76 +424,60 @@ day_of_month = int(time_datetime.strftime("%d"))
 target_day_of_month = day_of_month
 time_32bit = f"{time_in_seconds & 0b11111111111111111111111111111111:32b}"
 
-
-#read in blocks until we get a block on the day after the target day
+# read in blocks until we get a block on the day after the target day
 while target_day_of_month == day_of_month:
-    
-    #get progress estimate
-    progress_estimate = 100.0*(hour_of_day+minute_of_hour/60)/24.0
-    
-    #print progress update
-    print(str(block_height)+"\t"+time_utc+"\t"+time_32bit+"\t"+f"{progress_estimate:.2f}"+"%")
-    
-    #go through all the txs in the block which are stored in a list called 'tx'
+
+    # get progress estimate
+    progress_estimate = 100.0 * (hour_of_day + minute_of_hour / 60) / 24.0
+    if not lastonly:
+        # print progress update
+        print(str(block_height) + "\t" + time_utc + "\t" + time_32bit + "\t" + f"{progress_estimate:.2f}" + "%")
+
+    # go through all the txs in the block which are stored in a list called 'tx'
     for tx in block['tx']:
-        
-        #txs have more than one output which are stored in a list called 'vout'
+
+        # txs have more than one output which are stored in a list called 'vout'
         outputs = tx['vout']
-        
-        #go through all outputs in the tx
+
+        # go through all outputs in the tx
         for output in outputs:
-            
-            #the bitcoin output amount is called 'value' in Core, add this to the list
+
+            # the bitcoin output amount is called 'value' in Core, add this to the list
             amount = float(output['value'])
-            
-            #tiny and huge amounts aren't used by the USD price finder
+
+            # tiny and huge amounts aren't used by the USD price finder
             if 1e-6 < amount < 1e6:
-                
-                #take the log
+
+                # take the log
                 amount_log = log10(amount)
-                
-                #find the right output amount bin to increment
-                percent_in_range = (amount_log-first_bin_value)/range_bin_values
+
+                # find the right output amount bin to increment
+                percent_in_range = (amount_log - first_bin_value) / range_bin_values
                 bin_number_est = int(percent_in_range * number_of_bins)
-                
-                #search for the exact right bin (won't be less than)
+
+                # search for the exact right bin (won't be less than)
                 while output_bell_curve_bins[bin_number_est] <= amount:
                     bin_number_est += 1
                 bin_number = bin_number_est - 1
-                
-                #increment the output bin
-                output_bell_curve_bin_counts[bin_number] += 1.0   #+= means increment
-    
-    
-    #get the full data of the next block
+
+                # increment the output bin
+                output_bell_curve_bin_counts[bin_number] += 1.0  # += means increment
+    if lastonly:
+        break
+    # get the full data of the next block
     block_height = block_height + 1
-    block_hash_b = Ask_Node(['getblockhash',str(block_height)])
-    block_b = Ask_Node(['getblock',block_hash_b[:64],'2'])
+    block_hash_b = Ask_Node(['getblockhash', str(block_height)])
+    block_b = Ask_Node(['getblock', block_hash_b[:64], '2'])
     block = json.loads(block_b)
 
-    #get the time of the next block
+    # get the time of the next block
     time_in_seconds = int(block['time'])
-    time_datetime = datetime.fromtimestamp(time_in_seconds,tz=timezone.utc)
+    time_datetime = datetime.fromtimestamp(time_in_seconds, tz=timezone.utc)
     time_utc = time_datetime.strftime("%H:%M:%S")
     day_of_month = int(time_datetime.strftime("%d"))
     minute_of_hour = float(time_datetime.strftime("%M"))
     hour_of_day = int(time_datetime.strftime("%H"))
     time_32bit = f"{time_in_seconds & 0b11111111111111111111111111111111:32b}"
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 ##############################################################################
 
@@ -499,7 +487,7 @@ while target_day_of_month == day_of_month:
 
 
 
-# This sectoins aims to remove non-usd denominated samples from the bell curve
+# This section is intended to remove non-usd denominated samples from the bell curve
 # of outputs. The two primary steps are to remove very large/small outputs
 # and then to remove round btc amounts. We don't set the round btc amounts
 # to zero because if the USD price of bitcoin is also round, then round
@@ -725,8 +713,11 @@ w1 = a1/(a1+a2)
 w2 = a2/(a1+a2)
 price_estimate = int(w1*btc_in_usd_best + w2*btc_in_usd_2nd)
 
-#report the price estimate
-print("\nThe "+price_day_date_utc+" btc price estimate is: $" + f'{price_estimate:,}')
+if not lastonly:
+    #report the price estimate
+    print("\nThe "+price_day_date_utc+" btc price estimate is: $" + f'{price_estimate:,}')
+else:
+    print("\nThe btc price estimate is: $" + f'{price_estimate:,}')
 
 
 
