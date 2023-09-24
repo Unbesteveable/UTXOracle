@@ -132,15 +132,14 @@ def Ask_Node(command):
 # header, so we ask for the header only when we just need to know the time.
 
 
-#get current block height from local node and exit if connection not made
-block_count_b = Ask_Node(['getblockcount'])
-block_count = int(block_count_b)             #convert text to integer
-
 #get block header from current block height
-block_hash_b = Ask_Node(['getblockhash',block_count_b])
+block_hash_b = Ask_Node(['getbestblockhash'])
 block_header_b = Ask_Node(['getblockheader',block_hash_b[:64],'true'])
 import json #a built in tool for deciphering lists of embedded lists
 block_header = json.loads(block_header_b)
+
+#get current block height
+block_count = block_header['height']
 
 #get the date and time of the current block height
 from datetime import datetime, timezone #built in tools for dates/times
