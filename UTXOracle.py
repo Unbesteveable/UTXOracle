@@ -11,87 +11,98 @@
 #   \______/    |__/   |__/  |__/ \______/ |__/      \_______/ \_______/|__/ \_______/  #
 #                                                                                       #
 #########################################################################################  
-#                     Version 9 - The Intraday                                     
+#                     Version 9.1 RPC Only
 
 
 
-# UTXOracle is a decentralized alternative to establishing the USD price of bitcoin.
-# Instead of relying on prices given by an exchange, UTXOracle determines the price
-# by analyzing patterns of on-chain transactions. It connects only to a bitcoin
-# node and no other outside sources. It works even with wifi turned off because
-# there are no api or internet communications. Every individual who independently
-# runs this code will produce identical price estimates because even though the algorithm
-# is statistical in nature, both the code and input data are identical.
-# There are no AI or machine learning aspects to this project.
-# Every step of the algorithm is fully deterministic, human understandable, and
-# thoroughly documented in the code below.
-
-
-###############################################################################  
-
-#                        Quick Start          
-
-###############################################################################  
-
-
-# 1. Make sure you have python3 and a bitcoin node installed
-# 2. Make sure "server = 1" is in bitcoin.conf
-# 3. Run this file as "python3 UTXOracle.py"
 
 
 
 ###############################################################################  
 
-#                        Table of Contents          
+#  Introduction
 
 ###############################################################################  
 
-# This code reads like a white paper. It flows from top to bottom in a natural
-# human readable progression. Scrolling is minimize. Each following section
-# builds on results in the previous sections. The flow of the procedure
-# and approximate line numbers of the sections are as follows
+ # Thank you for taking the time to open this. Computer programs have two functions:
+ # one for the computer and one for the human. This might be the first time you've
+ # attempted to read a computer program. If so, these lines starting with the hash tag
+ # are for you. They’ll tell you what the code is doing at all times. The non–hash-tag
+ # lines are used by the computer, though if you spend a few seconds with them, 
+ # you’ll be able to understand exactly what they’re doing.
 
-# Part 1) Get options from user and read settings......	.	Line 72
-# Part 2) Create a way to talk to your node.............	Line 183		
-# Part 3) Get the latest block from your node..........	.	Line 222
-# Part 4) Check that the date entered is acceptable....	.	Line 270
-# Part 5) Find all blocks on the target day............	.	Line 323
-# Part 6) Build a map of the binary block files........	.	Line 485
-# Part 7) Build the output bell curve container........	.	Line 593
-# Part 8) Read all outputs on target day...............	.	Line 643
-# Part 9) Remove non-USD related outputs...............	.	Line 904
-# Part 10) Construct the USD price finding stencil.....	.	Line 980
-# Part 11) Find central output and average deviation...	.	Line 1251
-# Part 12) Generate chart and serve as a local webpage.	.	Line 1359		
-# License..............................................	.	Line 1781 
+ # Since you opened this, you probably already have a good idea of what UTXOracle
+ # does. It finds the price of Bitcoin using data only from your own node. It doesn’t
+ # contact any third parties. The code also has no third-party dependencies. It runs
+ # on the most basic version of Python 3 that you can find. Many operating systems
+ # have Python 3 built in, but many don’t. You’ll also need to know how to open a
+ # terminal window on your computer. To see if you already have Python 3 installed,
+ # open a terminal window and type python3 --version, then hit Enter. If it doesn’t
+ # show you a version number, you’ll need to download and install it from python.org.
+
+ # If you’re reading this from a file on your computer, then you already have the
+ # program. If you’re reading this off a website, you need to download it to your
+ # computer. You can do this by simply typing:
+
+ # If you’re an experienced coder, you’re probably already annoyed by this
+ # introduction. That’s because this program is not written for you. This program
+ # violates the most basic coder principles. It is a single file that runs top to bottom. 
+ # It doesn’t not make use of advanced libraries that would make the code more
+ # efficient at the cost of third party dependence. It repeats code for clarity instead of
+ # defining functions where the user has to constantly scroll up and down and to
+ # other files to see how the function works. The purpose of this code is not for
+ # efficiency, or for corporate team implementations. The purpose is to explain how
+ # the UTXOracle algorithm works side by side with the code.
+
+ # The code proceeds by completing the following 12 steps in order. Approximate line
+ # numbers of the steps are listed for the user to jump directly there if desired.
+ 
+# Step 1 - Configuration Options...................Line 78
+# Step 2 - Establish RPC Connection................Line 206
+# Step 3 - Check Dates.............................Line 315
+# Step 4 - Find Block Hashes.......................Line 409
+# Step 5 - Initial Histogram.......................Line 589
+# Step 6 - Load Histogram from Transaction Data....Line 646
+# Step 7 - Remove Round Bitcoin Amounts............Line 889
+# Step 8 - Construct the Price Finding Stencil.....Line 971
+# Step 9 - Estimate a Rough Price..................Line 1049
+# Step 10 - Create Intraday Price Points...........Line 1160
+# Step 11 - Find the Exact Average Price...........Line 1260
+# Step 12 - Generate a Price Plot HTML Page........Line 1377
+
 
 
 
 ###############################################################################  
 
-# Part 1) Get options from user and read settings from bitcoin.conf        
+# Step 1 - Configuation Options
 
-###############################################################################  
+############################################################################### 
 
-# print the current version and disable warnings
-import warnings
-print("\nUTXOracle version 9.0")
-warnings.filterwarnings("ignore", category=DeprecationWarning)
+# The way UTXOracle connects to your Bitcoin node depends on your operating
+# system and the settings in your bitcoin.conf file. First, the program determines
+# your operating system to make an initial guess at the default location of your
+# primary Bitcoin directory. If you're not using the default directory, use the -p option
+# when running the program to specify the correct block directory.
 
-# set platform dependent data paths and clear terminal
+# Other options let you specify the historical date you want to run (-h) or request the
+# price from the most recent 144 blocks (-rb). If you're an advanced user with
+# custom settings overriding the default RPC connection, the program will read your
+# bitcoin.conf file to use them. Otherwise, it will use the autogenerated cookie file for
+# authentication.
+
+
+# set platform dependent data paths
 import platform
 import os
 data_dir = []
 system = platform.system()
 if system == "Darwin":  # macOS
     data_dir = os.path.expanduser("~/Library/Application Support/Bitcoin")
-    os.system('clear')
 elif system == "Windows":
     data_dir = os.path.join(os.environ.get("APPDATA", ""), "Bitcoin")
-    os.system('cls')
 else:  # Linux or others
     data_dir = os.path.expanduser("~/.bitcoin")
-    os.system('clear')
 
 # initialize variables for blocks and dates
 date_entered = ""
@@ -139,108 +150,193 @@ if "-rb" in sys.argv:
     date_mode = False
     block_mode = True
 
-# Validate bitcoin.conf in data_dir
-conf_path = os.path.join(data_dir, "bitcoin.conf")
-if not os.path.exists(conf_path):
+# Look for bitcoin.conf or bitcoin_rw.conf
+conf_path = None
+conf_candidates = ["bitcoin.conf", "bitcoin_rw.conf"]
+for fname in conf_candidates:
+    path = os.path.join(data_dir, fname)
+    if os.path.exists(path):
+        conf_path = path
+        break
+if not conf_path:
     print(f"Invalid Bitcoin data directory: {data_dir}")
-    print("Expected to find 'bitcoin.conf' in this directory.")
+    print("Expected to find 'bitcoin.conf' or 'bitcoin_rw.conf' in this directory.")
     sys.exit(1)
 
-#parse the conf file for the blocks dir and rpc credentials
-conf_path = os.path.join(data_dir, "bitcoin.conf")
+# Parse the conf file
 conf_settings = {}
-if os.path.exists(conf_path):
-    with open(conf_path, 'r') as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-            if "=" in line:
-                key, value = line.split("=", 1)
-                conf_settings[key.strip()] = value.strip().strip('"')
+with open(conf_path, 'r') as f:
+    for line in f:
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "=" in line:
+            key, value = line.split("=", 1)
+            conf_settings[key.strip()] = value.strip().strip('"')
 
-# Set blocks directory from default or user specified
+# Set blocks directory
 blocks_dir = os.path.expanduser(conf_settings.get("blocksdir", os.path.join(data_dir, "blocks")))
 
-# Build CLI options if specified in conf file
+# Prepare RPC parameters
+rpc_user = conf_settings.get("rpcuser")
+rpc_password = conf_settings.get("rpcpassword")
+cookie_path = conf_settings.get("rpccookiefile", os.path.join(data_dir, ".cookie"))
+rpc_host = conf_settings.get("rpcconnect", "127.0.0.1")
+rpc_port = int(conf_settings.get("rpcport", "8332"))
+
+# Prepare bitcoin-cli fallback options (if needed elsewhere)
 bitcoin_cli_options = []
-if "rpcuser" in conf_settings and "rpcpassword" in conf_settings:
-    bitcoin_cli_options.append(f"-rpcuser={conf_settings['rpcuser']}")
-    bitcoin_cli_options.append(f"-rpcpassword={conf_settings['rpcpassword']}")
+if rpc_user and rpc_password:
+    bitcoin_cli_options.append(f"-rpcuser={rpc_user}")
+    bitcoin_cli_options.append(f"-rpcpassword={rpc_password}")
 else:
-    cookie_path = conf_settings.get("rpccookiefile", os.path.join(data_dir, ".cookie"))
     if os.path.exists(cookie_path):
         bitcoin_cli_options.append(f"-rpccookiefile={cookie_path}")
 
-for opt in ["rpcconnect", "rpcport"]:
-    if opt in conf_settings:
-        bitcoin_cli_options.append(f"-{opt}={conf_settings[opt]}")
+if rpc_host:
+    bitcoin_cli_options.append(f"-rpcconnect={rpc_host}")
+if "rpcport" in conf_settings:
+    bitcoin_cli_options.append(f"-rpcport={conf_settings['rpcport']}")
 
 
 
-###############################################################################  
-
-#  Part 2) Create a way to talk to your node      
 
 ###############################################################################  
 
-# Here we define a shortcut for calling the node. We do this repeatedly
-# throughout the program so it's better to define a function once and call it
-# whenever we need it instead of copy and pasting the same code several times. 
-# The function asks the node a question and returns the answer to the algorithm 
-# where it is needed. If you get an error in this function, the problem is 
-# likely that you don't have server=1 in your bitcoin conf file.
+#  Step 2 - Establish RPC Connection
+
+###############################################################################  
+
+# Community consensus has established that RPC should be the standard front door
+# through which other programs communicate with your Bitcoin node. Since we'll be
+# making repeated requests to the node, we define a general function that attaches
+# the necessary RPC credentials to any command we send and returns the
+# response to where it's needed in the program. If this is the first time you've used
+# RPC, the function will create the RPC cookie file using the node's default method.
+# Otherwise, it simply returns the result of the command and prints any errors
+# encountered. After defining the Ask_Node function, we test it by requesting the
+# latest block the node has received.
+
 
 print("\nCurrent operation  \t\t\t\tTotal Completion",flush=True)
-print("\nConnecting to node...\t\t\t\t", end="",flush=True)
+print("\nConnecting to node...",flush=True)
+print("0%..", end="",flush=True)
 
 # define the node communication function
-import subprocess
-def Ask_Node(command):
-    full_command = ["bitcoin-cli"] + bitcoin_cli_options + command
+import http.client
+import json
+import base64
+
+def Ask_Node(command, cred_creation):
+    method = command[0]
+    params = command[1:]
+
+    # Handle authentication
+    rpc_u = rpc_user
+    rpc_p = rpc_password
+
+    if not rpc_u or not rpc_p:
+        try:
+            with open(cookie_path, "r") as f:
+                cookie = f.read().strip()
+                rpc_u, rpc_p = cookie.split(":", 1)
+        except Exception as e:
+            print("Error reading .cookie file for RPC authentication.")
+            print("Details:", e)
+            sys.exit(1)
+
+    # Prepare JSON-RPC payload
+    payload = json.dumps({
+        "jsonrpc": "1.0",
+        "id": "utxoracle",
+        "method": method,
+        "params": params
+    })
+
+    # Basic auth header
+    auth_header = base64.b64encode(f"{rpc_u}:{rpc_p}".encode()).decode()
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Basic {auth_header}"
+    }
 
     try:
-        rv = subprocess.check_output(full_command)
-        #subprocess.run('echo "\\033]0;UTXOracle\\007"', shell=True)
-        return rv
+        conn = http.client.HTTPConnection(rpc_host, rpc_port)
+        conn.request("POST", "/", payload, headers)
+        response = conn.getresponse()
+        if response.status != 200:
+            raise Exception(f"HTTP error {response.status} {response.reason}")
+        raw_data = response.read()
+        conn.close()
+
+        # Extract result and mimic `subprocess.check_output` return (as bytes)
+        parsed = json.loads(raw_data)
+        if parsed.get("error"):
+            raise Exception(parsed["error"])
+        result = parsed["result"]
+        if isinstance(result, (dict, list)):
+            return json.dumps(result, indent=2).encode()  # pretty-print like CLI
+        else:
+            return str(result).encode()
+
     except Exception as e:
-        print("Error connecting to your node. Troubleshooting steps:\n")
-        print("\t1) Make sure bitcoin-cli is working: try 'bitcoin-cli getblockcount'")
-        print("\t2) Make sure bitcoind is running (and server=1 in bitcoin.conf)")
-        print("\t3) If needed, set rpcuser/rpcpassword or point to the .cookie file")
-        print("\nThe full command was:", " ".join(full_command))
-        print("\nThe error from bitcoin-cli was:\n", e)
-        sys.exit()
+        if not cred_creation:
+            print("Error connecting to your node via RPC. Troubleshooting steps:\n")
+            print("\t1) Ensure bitcoind or bitcoin-qt is running with server=1.")
+            print("\t2) Check rpcuser/rpcpassword or .cookie.")
+            print("\t3) Verify RPC port/host settings.")
+            print("\nThe attempted RPC method was:", method)
+            print("Parameters:", params)
+            print("\nThe error was:\n", e)
+            sys.exit(1)
 
-
-
-
-
-
-###############################################################################  
-
-# Part 3)  Get the latest block from the node      
-
-###############################################################################  
-
-# The first request to the node is to ask it how many blocks it has. This
-# lets us know the maximum possible day for which we can request a
-# btc price estimate. The time information of blocks is listed in the block
-# header, so we ask for the header only when we just need to know the time.
-
-#import built in tools for dates/times and json style lists
-from datetime import datetime, timezone, timedelta
-import json 
 
 #get current block height from local node and exit if connection not made
-block_count_b = Ask_Node(['getblockcount'])
+print("20%..", end="",flush=True)
+Ask_Node(['getblockcount'], True) #create RPC creds if necessary
+block_count_b = Ask_Node(['getblockcount'], False)
+print("40%..", end="",flush=True)
 block_count = int(block_count_b)             #convert text to integer
 block_count_consensus = block_count-6
 
 #get block header from current block height
-block_hash = Ask_Node(['getblockhash', str(block_count_consensus)]).decode().strip()
-block_header_b = Ask_Node(['getblockheader', block_hash, 'true'])
+#block_hash = Ask_Node(['getblockhash', str(block_count_consensus)]).decode().strip()
+block_hash = Ask_Node(['getblockhash',block_count_consensus], False).decode().strip()
+print("60%..", end="",flush=True)
+block_header_b = Ask_Node(['getblockheader', block_hash, True], False)
 block_header = json.loads(block_header_b)
+print("80%..", end="",flush=True)
+
+
+
+
+###############################################################################  
+
+# Step 3 - Check Dates  
+
+############################################################################### 
+
+# The Bitcoin price does not exist instantaneously on-chain. A single block often
+# does not contain enough transaction data to determine the price—and in some
+# cases, may contain no transactions at all. For this reason, a time-averaging
+# window is required to accumulate sufficient data to estimate the price accurately.
+
+# While many averaging windows could work, a single day is both a natural human
+# time scale and typically includes enough transaction activity. For accounting and
+# historical purposes, daily resolution is also a commonly used standard. Therefore, 
+# UTXOracle uses the daily average as its default time window for determining price.
+
+# This means UTXOracle must know two things: (1) the most recent date covered by 
+# the node’s block data, and (2) the date the user is requesting the price for. If the 
+# requested date is too far in the past or future relative to the available data, an error 
+# message will be displayed. The earliest supported date depends on how far back 
+# the current version of UTXOracle has been tested.
+
+
+
+#import built in tools for dates/times and json style lists
+from datetime import datetime, timezone, timedelta
+
 
 
 #get the date and time of the current block height
@@ -258,23 +354,13 @@ seconds_in_a_day = 60*60*24
 yesterday_seconds = latest_time_in_seconds - seconds_in_a_day
 latest_price_day = datetime.fromtimestamp(yesterday_seconds,tz=timezone.utc)
 latest_price_date = latest_price_day.strftime("%Y-%m-%d")
-
+print("100%", end="",flush=True)
 
 #print completion update
-print("5% done",flush=True)
+print("\t\t\t5% done",flush=True)
 
 
-
-###############################################################################  
-
-# Part 4) Check that the date entered is an acceptable date    
-
-###############################################################################  
-
-# In this section make sure that the date requested is in the
-# acceptable range for this version. This section is not used if user 
-# specificed block numbers instead of a date
-
+# If running in date mode, make sure that the date requested is in the
 if date_mode:
 
     # run latest day if hit enter
@@ -320,21 +406,36 @@ if date_mode:
 
 ##############################################################################  
 
-# Part 5) Find the all blocks on the target day or in block height range requested
+# Step 4 - Find Block Hashes
 
 ##############################################################################  
 
-# Now that we have the target day we need to find which blocks were mined on this day.
-# This would be easy if bitcoin blocks were organized by time
-# instead of by block height. However there's no way to ask bitcoin for a block at a
-# specific time. Instead one must ask for a block, look at it's time, then estimate
-# the number of blocks to jump for the next guess. So we use this
-# guess and check method to find all blocks on the target day.
+# Bitcoin nodes don’t store blocks by date—or even by block height. Instead, they 
+# store blocks by their hash. This has two implications: first, we need to know which 
+# block heights we're looking for, and second, we must retrieve the corresponding 
+# block hashes for those heights.
+
+# The task is simpler when running in block mode (-rb), where we determine the 
+# needed blocks by subtracting 144 from the most recent block height. In date mode, 
+# however, the process is more involved, as we must enter a guess-and-check loop 
+# to determine which blocks correspond to the desired calendar day.
+
+# Since blocks are mined roughly every ten minutes, we can use that as a guideline. 
+# When a user enters a date, we first estimate how many blocks ago that date 
+# occurred. We then check block timestamps starting from our estimate, moving 
+# forward to find the last block of that day, and backward to find the first block.
+
+# Once we’ve identified all the relevant block heights, we store the hashes of each 
+# block in a list so that we can retrieve them one by one in the next step.
+
+
 
 #define a shortcut for getting the block time from the block number
 def get_block_time(height):
-    block_hash_b = Ask_Node(['getblockhash',str(height)])
-    block_header_b = Ask_Node(['getblockheader',block_hash_b[:64],'true'])
+    block_hash_b = Ask_Node(['getblockhash',height], False)
+    #block_header_b = Ask_Node(['getblockheader',block_hash_b[:64],True])
+    block_header_b = Ask_Node(['getblockheader', block_hash_b.decode().strip(), True], False)
+
     block_header = json.loads(block_header_b)
     return(block_header['time'], block_hash_b[:64].decode())
 
@@ -373,7 +474,7 @@ if block_mode:
 #if date mode search for all the blocks on this day
 elif date_mode:
     
-    print("\nFinding all blocks on "+datetime_entered.strftime("%b %d, %Y"),flush=True)
+    print("\nFinding first blocks on "+datetime_entered.strftime("%b %d, %Y"),flush=True)
     print("0%..",end="", flush=True)
     #first estimate of the block height of the price day
     seconds_since_price_day = latest_time_in_seconds - price_day_seconds
@@ -445,7 +546,7 @@ elif date_mode:
     day2 = get_day_of_month(time_in_seconds)
     
     print("100%\t\t\t25% done",flush=True)
-    print("\nDetermining the correct order of blocks",flush=True)
+    print("\nFinding last blocks on "+datetime_entered.strftime("%b %d, %Y"),flush=True)
     
     #load block nums and hashes needed
     block_num = 0
@@ -480,140 +581,46 @@ elif date_mode:
 
 
 
-##############################################################################  
-
-# Part 6) Build a map of the binary block files      
-
-##############################################################################  
-
-# In this section we find the byte-wise location of all the block data
-# that we need in terms of where it's stored on the user's hard drive
-
-print("\nMaping block locations in raw block files",flush=True)
-
-# standard variables for block readind and estiamted blocks per binary .blk file
-blocks_per_file=50 #generous, likely much more
-Mainnet_flag = b'\xf9\xbe\xb4\xd9'
-Header_size = 80
-
-#short cut for hashing
-from hashlib import sha256
-def sha256d(b): return sha256(sha256(b).digest()).digest()
-
-# Get all .blk files sorted by index
-block_hashes_needed = set(block_hashes_needed)
-found_blocks = {}
-blk_files = sorted(
-        [f for f in os.listdir(blocks_dir) if f.startswith('blk') and f.endswith('.dat')],
-        key=lambda f: int(f[3:8])
-    )
-
-# conservatively estimate the first and last blk file needed
-block_depth_start = block_count_consensus - block_nums_needed[0]
-last_blk_file_num = int(blk_files[-1][3:8])
-start_blk_index = last_blk_file_num - int(block_depth_start/blocks_per_file +1) - 1
-end_blk_index_est = last_blk_file_num - int(int(block_depth_start/128))
-
-# read a swath of block files looking for the block hashes needeed
-blk_files = [f for f in blk_files if int(f[3:8]) >= start_blk_index]
-print_next = 0
-block_file_num  = 0
-for blk_file in blk_files:
-    
-    #path to the next blk file
-    path = os.path.join(blocks_dir, blk_file)
-    
-    #print progress update
-    block_file_num+=1
-    if block_file_num/(end_blk_index_est-start_blk_index)*100 > print_next:
-        if print_next < 100:
-            print(str(print_next)+"%..",end="",flush=True)
-            print_next +=20
-    
-    #read the blk file
-    with open(path, "rb") as f:
-        
-        while True:
-            #read the headers to the block
-            start = f.tell()
-            magic = f.read(4)
-            if not magic or len(magic) < 4:
-                break
-            if magic != Mainnet_flag:
-                f.seek(start + 1)
-                continue
-            size_bytes = f.read(4)
-            if len(size_bytes) < 4:
-                break
-            block_size = int.from_bytes(size_bytes, "little")
-            header = f.read(Header_size)
-            if len(header) < Header_size:
-                break
-
-            #read the block hash and time stamp
-            block_hash = sha256d(header)[::-1]  # big-endian
-            block_hash_hex = block_hash.hex()
-            timestamp = int.from_bytes(header[68:72], "little")
-           
-            #add block to the list if a needed block
-            if block_hash_hex in block_hashes_needed:
-                found_blocks[block_hash] = {
-                    "file": blk_file,
-                    "offset": start,
-                    "block_size": block_size,
-                    "time": timestamp
-                }
-                if len(found_blocks) == len(block_hashes_needed):
-                    break
-                
-            # find the next block in the blk file 
-            f.seek(start + 8 + block_size)
-    
-    # stop if all blocks found
-    if len(found_blocks) == len(block_hashes_needed):
-        break
-
-# error if all blocks found, if good print progress update
-if len(found_blocks) != len(block_hashes_needed):
-    print("Error: Reached end of blk files without finding all target blocks.")
-    sys.exit()
-else:
-    while print_next<100:
-        print(str(print_next)+"%..",end="",flush=True)
-        print_next +=20
-    print("100% \t\t\t75% done",flush=True)
-
-
-
 
 
 
 ##############################################################################
 
-#  Part 7) Build the container to hold the output amounts bell curve
+# Step 5 - Initial histogram
 
 ##############################################################################
 
-# We're almost ready to read in block data but first we must construct the 
-# containers which will hold the distribution of transaction output amounts.
-# In pure math a bell curve can be perfectly smooth. But to make a bell curve
-# from a sample of data, one must specify a series of buckets, or bins, and then
-# count how many samples are in each bin. If the bin size is too large, say just one
-# large bin, a bell curve can't appear because it will have only one bar. The bell 
-# curve also doesn't appear if the bin size is too small because then there will 
-# only be one sample in each bin and we'd fail to have a distribution of bin heights. 
-# Although several bin sizes would work, I have found over many years, that 200 bins 
-# for every 10x of bitcoin amounts works very well. We use 'every 10x' because just 
-# like a long term bitcoin price chart, viewing output amounts in log scale provides 
-# a more comprehensive and detailed overview of the amounts being analyzed. 
+# Just as the price of Bitcoin does not exist at a single instant in time, it also does not 
+# exist at a single satoshi amount. The on-chain price emerges because users tend 
+# to spend Bitcoin in round fiat amounts. To detect this, we create a histogram that 
+# reveals clusters of satoshi values where round fiat amounts are most likely to 
+# occur.
+
+# We divide the BTC value range into intervals and count how many transaction 
+# outputs fall into each interval. This allows us to visualize where spending patterns 
+# cluster. If the intervals are too small, the data becomes noisy; if they’re too large, 
+# important detail is lost. A rough estimate of the ideal interval width is the average 
+# daily fiat volatility, which we’ve found to be around 0.5%—corresponding to roughly 
+# 200 intervals between each power of ten in BTC.
+
+# We must also define the upper and lower bounds of the histogram: the smallest 
+# and largest BTC amounts likely to capture typical round fiat values. This range will 
+# evolve as Bitcoin’s purchasing power changes and may need to be updated in 
+# future versions of UTXOracle. From 2020 to 2025, we’ve found that most round fiat 
+# amounts fall within the range of 10^-6 to 10^6 BTC.
+
+# Once the range and interval size are established, we generate arrays representing 
+# the edges of each interval and initialize a corresponding array of zeros to count 
+# how many transaction outputs fall into each bucket.
+
 
 # Define the maximum and minimum values (in log10) of btc amounts to use
 first_bin_value = -6
 last_bin_value = 6  #python -1 means last in list
 range_bin_values = last_bin_value - first_bin_value 
 
-# create a list of output_bell_curve_bins and add zero sats as the first bin
-output_bell_curve_bins = [0.0] #a decimal tells python the list will contain decimals
+# create a list of output_histogram_bins and add zero sats as the first bin
+output_histogram_bins = [0.0] #a decimal tells python the list will contain decimals
 
 # calculate btc amounts of 200 samples in every 10x from 100 sats (1e-6 btc) to 100k (1e5) btc
 for exponent in range(-6,6): #python range uses 'less than' for the big number 
@@ -622,17 +629,13 @@ for exponent in range(-6,6): #python range uses 'less than' for the big number
     for b in range(0,200):
         
         bin_value = 10 ** (exponent + b/200)
-        output_bell_curve_bins.append(bin_value)
+        output_histogram_bins.append(bin_value)
 
 # Create a list the same size as the bell curve to keep the count of the bins
-number_of_bins = len(output_bell_curve_bins)
-output_bell_curve_bin_counts = []
+number_of_bins = len(output_histogram_bins)
+output_histogram_bin_counts = []
 for n in range(0,number_of_bins):
-    output_bell_curve_bin_counts.append(float(0.0))
-
-
-
-
+    output_histogram_bin_counts.append(float(0.0))
 
 
 
@@ -640,19 +643,45 @@ for n in range(0,number_of_bins):
 
 ##############################################################################
 
-#  Part 8) Get all output amounts from all block on target day
+#  Step 6 -  Load Transaction Data
 
 ##############################################################################
 
-# This section of the program will take the most time as it requests all 
-# blocks from the node on the price day. It readers every transaction (tx)
-# from those blocks and places each tx output value into the bell curve.
-# New in version 8 are filters that disallow the following types of transactions
-# as they have been found to be unlikely to be round p2p usd transactions: coinbase,
-# greater than 5 inputs, greater than 2 outputs, only one output, has op_return,
-# has witness data > 500 bytes, and has an input created on the same day.
+# This section of the algorithm is the most time-consuming because it reads every 
+# transaction from the range of blocks requested by the user. We typically need 
+# around 144 blocks, and since each block is roughly 1MB, this means processing 
+# about 144 MB of data.
+
+# To improve efficiency, we request the raw binary block data and manually convert it 
+# into integers and strings. This requires defining functions that translate binary data 
+# into integers, such as read_varint and encode_varint. We also compute the txid 
+# manually, since binary Bitcoin blocks do not store it directly.
+
+# After defining these functions, we loop through the list of required block hashes 
+# and extract transaction output amounts to place into histogram bins. We apply 
+# several filters to exclude transactions that are unlikely to reflect meaningful price 
+# information.
+
+# Through years of testing we decided to filter out transactions containing: more than 
+# 5 inputs, more than 2 outputs, coinbase outputs, op_return outputs, large witness 
+# scripts, and same day inputs. If the output passes the filters, it is inserted into the 
+# histogram bin according to the bitcoin amount of the output.
+
 
 print("\nLoading every transaction from every block",flush=True)
+
+
+
+# #initialize output lists and variables
+from struct import unpack
+import binascii
+todays_txids = set()
+raw_outputs = []
+block_heights_dec = []
+block_times_dec = []
+print_next = 0
+block_num = 0
+
 
 #shortcut for reading bytes of data from the block file
 import struct
@@ -741,180 +770,142 @@ def compute_txid(raw_tx_bytes: bytes) -> bytes:
     return hashlib.sha256(hashlib.sha256(stripped_tx).digest()).digest()[::-1]
 
 
-#initialize output lists and variables
-from struct import unpack
-todays_txids = set()
-raw_outputs = []
-block_heights_dec = []
-block_times_dec = []
-print_next = 0
-block_num = 0
-
-#loop through all found blocks
-for block_hash, meta in found_blocks.items():
-    
-    #init variables for next block
+# read in all blocks needed
+for bh in block_hashes_needed:
     block_num += 1
-    num_block_txs = 0
+    print_progress = block_num / len(block_hashes_needed) * 100
+    if print_progress > print_next and print_next < 100:
+        #print(f"{int(print_next)}% ", end="", flush=True)
+        print(f"{int(print_next)}%..",end="",flush=True)
+        print_next += 1
+        if print_next % 7 == 0:
+            print("\n", end="")
+
+    # Get raw block hex using RPC
+    raw_block_hex = Ask_Node(["getblock", bh, 0], False).decode().strip()
+    raw_block_bytes = binascii.unhexlify(raw_block_hex)
+    stream = BytesIO(raw_block_bytes)
+
+    # Read header (skip 80 bytes)
+    stream.read(80)
+    tx_count = read_varint(stream)
+    
+    # loop through all txs in this block
     txs_to_add = []
-    
-    #print progress update
-    if block_num/len(block_nums_needed)*100 > print_next:
-        print(str(print_next)+"%..",end="", flush=True)
-        print_next +=20
-    
-    #get the location of the block on the hard drive
-    file_path = os.path.join(blocks_dir, meta["file"])
-    with open(file_path, "rb") as f:
-        
-        #get tx count in this block
-        f.seek(meta["offset"])
-        f.read(8)   # skip magic + block size
-        f.read(80)  # skip block header
-        tx_count = read_varint(f)
+    for tx_index in range(tx_count):
+        start_tx = stream.tell()
+        version = stream.read(4)
 
-        #loop through all transactions 
-        for tx_index in range(tx_count):
-            num_block_txs += 1
-             
-            # read tx version type
-            start_tx = f.tell()
-            version = f.read(4)
+        # Check for SegWit
+        marker_flag = stream.read(2)
+        is_segwit = marker_flag == b'\x00\x01'
+        if not is_segwit:
+            stream.seek(start_tx + 4)
 
-            # Segwit check
-            marker_flag = f.read(2)
-            is_segwit = (marker_flag == b'\x00\x01')
-            if not is_segwit:
-                f.seek(start_tx + 4)  # rewind if legacy
+        # Read inputs
+        input_count = read_varint(stream)
+        inputs = []
+        has_op_return = False
+        witness_exceeds = False
+        is_coinbase = False
+        input_txids = []
+        for _ in range(input_count):
+            prev_txid = stream.read(32)
+            prev_index = stream.read(4)
+            script_len = read_varint(stream)
+            script = stream.read(script_len)
+            stream.read(4)
+            input_txids.append(prev_txid[::-1].hex())
+            if prev_txid == b'\x00' * 32 and prev_index == b'\xff\xff\xff\xff':
+                is_coinbase = True
+            inputs.append({"script": script})
 
-            # read input count
-            input_count = read_varint(f)
-            inputs = []
-            has_op_return = False
-            witness_exceeds = False
-            is_coinbase = False
-            input_txids = []
-            
-            #loop through inputs
-            for _ in range(input_count):
-                prev_txid = f.read(32)
-                prev_index = f.read(4)
-                script_len = read_varint(f)
-                script = f.read(script_len)
-                f.read(4)  # sequence
-                
-                #add input txids to a list
-                input_txids.append(prev_txid[::-1].hex())
-                
-                #check for coinbase tx
-                if prev_txid == b'\x00' * 32 and prev_index == b'\xff\xff\xff\xff':
-                    is_coinbase = True
-                
-                # add input scripts to a list
-                inputs.append({ "script": script })
+        #read outputs
+        output_count = read_varint(stream)
+        output_values = []
+        for _ in range(output_count):
+            value_sats = unpack("<Q", stream.read(8))[0]
+            script_len = read_varint(stream)
+            script = stream.read(script_len)
+            if script and script[0] == 0x6a:
+                has_op_return = True
+            value_btc = value_sats / 1e8
+            if 1e-5 < value_btc < 1e5:
+                output_values.append(value_btc)
 
-            #read number of outputs
-            output_count = read_varint(f)
-            output_values = []
-            
-            #loop through outputs
-            for _ in range(output_count):
-                value_sats = unpack("<Q", f.read(8))[0]
-                script_len = read_varint(f)
-                script = f.read(script_len)
-                
-                # check for op_returns
-                if script and script[0] == 0x6a:  # OP_RETURN in output
-                    has_op_return = True
-                
-                # check for amount out of range
-                value_btc = value_sats / 1e8
-                if 1e-5 < value_btc < 1e5:
-                    output_values.append(value_btc)
-
-            #if segqt, check witness data
-            if is_segwit:
-                for input_data in inputs:
-                    stack_count = read_varint(f)
-                    total_witness_len = 0
-                    for _ in range(stack_count):
-                        item_len = read_varint(f)
-                        total_witness_len += item_len
-                        f.read(item_len)
-                        if item_len > 500:
-                            witness_exceeds = True
-
-                    # check it witness data larger than reasonable                    
-                    if total_witness_len > 500:
+        # check witness data
+        if is_segwit:
+            for input_data in inputs:
+                stack_count = read_varint(stream)
+                total_witness_len = 0
+                for _ in range(stack_count):
+                    item_len = read_varint(stream)
+                    total_witness_len += item_len
+                    stream.read(item_len)
+                    if item_len > 500 or total_witness_len > 500:
                         witness_exceeds = True
 
-            #calculate the TXID of this transaction and add it to list
-            f.read(4)
-            end_tx = f.tell()
-            f.seek(start_tx)
-            raw_tx = f.read(end_tx - start_tx)
-            txid = compute_txid(raw_tx)
-            todays_txids.add(txid.hex())
+        #comput txid
+        stream.read(4)
+        end_tx = stream.tell()
+        stream.seek(start_tx)
+        raw_tx = stream.read(end_tx - start_tx)
+        txid = compute_txid(raw_tx)
+        todays_txids.add(txid.hex())
 
-            #check for same day input re-use
-            is_same_day_tx = False
-            for itxid in input_txids:
-                if itxid in todays_txids:
-                    is_same_day_tx = True
-                
-            # === Final inclusion check ===
-            if (input_count <= 5 and output_count == 2 and not is_coinbase and
-                not has_op_return and not witness_exceeds) and not is_same_day_tx:
-                
-                # add all outputs to the bell curve
-                for amount in output_values:
-                    
-                    #find the right output amount bin to increment
-                    amount_log = log10(amount)
-                    percent_in_range = (amount_log-first_bin_value)/range_bin_values
-                    bin_number_est = int(percent_in_range * number_of_bins)
-                    
-                    #double check exact right bin (won't be less than)
-                    while output_bell_curve_bins[bin_number_est] <= amount:
-                        bin_number_est += 1
-                    bin_number = bin_number_est - 1
-                    
-                    #add this output to the bell curve
-                    output_bell_curve_bin_counts[bin_number] += 1.0
-                    
-                    #add the output to this block's output list
-                    txs_to_add.append(amount)
-                    
-    #add the block's output list to the total output list
-    if len(txs_to_add)>0:
-        block_dec_inc = 1/len(txs_to_add)
-        bkh = block_nums_needed[block_num-1]
-        tm = block_times_needed[block_num-1]
+        #check same day tx
+        is_same_day_tx = any(itxid in todays_txids for itxid in input_txids)
+
+        # apply filter and add output to bell curve
+        if (input_count <= 5 and output_count == 2 and not is_coinbase and
+            not has_op_return and not witness_exceeds and not is_same_day_tx):
+            for amount in output_values:
+                amount_log = log10(amount)
+                percent_in_range = (amount_log - first_bin_value) / range_bin_values
+                bin_number_est = int(percent_in_range * number_of_bins)
+                while output_histogram_bins[bin_number_est] <= amount:
+                    bin_number_est += 1
+                bin_number = bin_number_est - 1
+                output_histogram_bin_counts[bin_number] += 1.0
+                txs_to_add.append(amount)
+
+    # add outputs to raw outputs
+    if len(txs_to_add) > 0:
+        bkh = block_nums_needed[block_num - 1]
+        tm = block_times_needed[block_num - 1]
         for amt in txs_to_add:
             raw_outputs.append(amt)
             block_heights_dec.append(bkh)
             block_times_dec.append(tm)
-                        
-print("100% \t\t\t95% done",flush=True)
+
+
+print("100%",flush=True)
+print("\t\t\t\t\t\t95% done",flush=True)
 
             
 
 ##############################################################################
 
-#  Part 9) Remove non-usd related outputs from the bell curve
+#  Step 7 - Remove Round Bitcoin Amounts
 
 ##############################################################################
 
-# This section aims to remove non-usd denominated samples from the bell curve
-# of outputs. The two primary steps are to remove very large/small outputs
-# and then to remove round btc amounts. We don't set the round btc amounts
-# to zero because if the USD price of bitcoin is also round, then round
-# btc amounts will co-align with round usd amounts. There are many ways to deal
-# with this. One way we've found to work is to smooth over the round btc amounts
-# using the neighboring amounts in the bell curve. The last step is to normalize
-# the bell curve. Normalizing is done by dividing the entire curve by the sum 
-# of the curve. This is done because it's more convenient for signal processing
-# procedures if the sum of the signal integrates to one.
+# Although most transaction amounts are related to fiat purchasing power, spending 
+# round Bitcoin amounts is still common. This makes it difficult to determine whether 
+# a histogram interval is truly capturing a round fiat value or simply reflecting a round 
+# BTC amount.
+
+# We can't completely remove round BTC amounts, because when the fiat price of 
+# Bitcoin is near a round number, round BTC and round fiat values can overlap. 
+# Instead of removing these intervals, we smooth them by averaging the values of 
+# the histogram bins directly above and below the round BTC amounts.
+
+# After smoothing, we normalize the histogram by dividing each bin by the total sum. 
+# This converts the histogram into percentages rather than raw counts. Percentages 
+# are more stable across days with unusually high or low transaction volume, making 
+# the resulting signal more consistent.
+
+
 
 # print update
 print("\nFinding prices and rendering plot",flush=True)
@@ -922,11 +913,11 @@ print("0%..",end="",flush=True)
 
 #remove outputs below 10k sat (increased from 1k sat in v6)
 for n in range(0,201):
-    output_bell_curve_bin_counts[n]=0
+    output_histogram_bin_counts[n]=0
 
 #remove outputs above ten btc
-for n in range(1601,len(output_bell_curve_bin_counts)):
-    output_bell_curve_bin_counts[n]=0
+for n in range(1601,len(output_histogram_bin_counts)):
+    output_histogram_bin_counts[n]=0
 
 #create a list of round btc bin numbers
 round_btc_bins = [
@@ -952,22 +943,22 @@ round_btc_bins = [
 
 #smooth over the round btc amounts
 for r in round_btc_bins:
-    amount_above = output_bell_curve_bin_counts[r+1]
-    amount_below = output_bell_curve_bin_counts[r-1]
-    output_bell_curve_bin_counts[r] = .5*(amount_above+amount_below)
+    amount_above = output_histogram_bin_counts[r+1]
+    amount_below = output_histogram_bin_counts[r-1]
+    output_histogram_bin_counts[r] = .5*(amount_above+amount_below)
 
 #get the sum of the curve
 curve_sum = 0.0
 for n in range(201,1601):
-    curve_sum += output_bell_curve_bin_counts[n]
+    curve_sum += output_histogram_bin_counts[n]
 
 #normalize the curve by dividing by it's sum and removing extreme values
 for n in range(201,1601):
-    output_bell_curve_bin_counts[n] /= curve_sum
+    output_histogram_bin_counts[n] /= curve_sum
     
     #remove extremes (0.008 chosen by historical testing)
-    if output_bell_curve_bin_counts[n] > 0.008:
-        output_bell_curve_bin_counts[n] = 0.008
+    if output_histogram_bin_counts[n] > 0.008:
+        output_histogram_bin_counts[n] = 0.008
 
 #print update    
 print("20%..",end="",flush=True)
@@ -977,33 +968,31 @@ print("20%..",end="",flush=True)
 
 ##############################################################################
 
-#  Part 8) Construct the USD price finder stencils
+#  Step 8 - Construct the Price Finding Stencil
 
 ##############################################################################
 
-# We now have a bell curve of outputs which should contain round USD outputs
-# as it's prominent features. To expose these prominent features more,
-# and estimate a usd price, we slide two types of stencils over the bell curve and look 
-# for where the slide location is maximized. There are several stencil designs
-# and maximization strategies which could accomplish this. The one used here 
-# is to have one smooth stencil that finds the general shape of a typical output
-# distribution day, and a spike stencil which narrows in on exact locations
-# of the round USD amounts. Both the smooth and spike stenciled have been created
-# by an iterative process of manually sliding together round USD spikes in
-# output distribtutions over every day from 2020 to 2024, and then taking the average
-# general shape and round usd spike values over that period.
+# Users don’t just send round fiat amounts, they also tend to send them in 
+# predictable proportions depending on the amount. For example, users spend $100 
+# far more often than they send $10,000. We use this proportionality both to lock 
+# onto round fiat amounts and to determine which amount is which.
 
-# Load the average smooth stencil to align broadly with a typical output day 
-#
-#                       *  *
-#                    *         *
-#                 *               * 
-#              *                     *
-#            *                          *
-#          *                               *
-#        *                                     *
-#      *                                            *  
-#   10k sats        0.01 btc           1 btc        10btc 
+# Through historical testing, we’ve measured the average histogram bin counts for 
+# each common round fiat amount and hard-code these values into what we call a 
+# price-finding stencil. The most common and heavily weighted amount in the stencil 
+# is $100. Less frequently used fiat amounts are assigned lower weights, since we 
+# expect to see them transacted less often.
+
+# Even when users are not transacting at a perfectly round fiat amount, their 
+# behavior is still influenced by Bitcoin’s long-term rise in purchasing power. For 
+# example, if we plot a bell curve of output amounts, we find that the center of the 
+# curve shifts toward smaller BTC amounts over time.
+
+# This provides additional information we can use. We first apply a smooth stencil to 
+# estimate a center of gravity for the price within a broad 20% range. Then, we apply 
+# a spike stencil based on perfectly round USD amounts to refine the price estimate 
+# to within about 0.5%.
+
 
 # Parameters
 num_elements = 803
@@ -1017,16 +1006,6 @@ for x in range(num_elements):
     smooth_stencil.append( (.00150 * 2.718281828459045 ** exp_part) + (.0000005 * x) )
 
 # Load the spike stencil that fine tunes the alignment on popular usd amounts
-#
-#                         *
-#                     *   *                       
-#                     *   *                   
-#                *    *   *          *           
-#           *    *    *   *    *     *              
-#           *    *    *   *    *     *    *             
-#       *   *    *    *   *    *     *    *     *       
-#       *   *    *    *   *    *     *    *     *     
-#      $1 $10  $20  $50  $100  $500  $1k  $2k   $10k
 
 spike_stencil = []
 for n in range(0,803):
@@ -1067,13 +1046,27 @@ spike_stencil[801]= 0.000832244504868709  # $10000
 
 ##############################################################################
 
-#  Part 10) Estimate a rough price using the best fit stencil slide
+#  Step 9 - Estimate a Rough Price
 
 ##############################################################################
 
-# Here we slide the stencil over the bell curve and see
-# where it fits the best. The best fit location and it's neighbor are used
-# in a weighted average to estimate the best fit USD price
+# To find where the smooth and spiked stencils fit best over the output histogram, we 
+# slide the stencils across the histogram and calculate a score at each position. 
+# There are several ways to do this, but the method we have found most effective is 
+# to multiply the stencil heights by the histogram values at each point and sum the 
+# result.
+
+# We define upper and lower bounds for the slide range, which set the maximum and 
+# minimum possible prices. These limits will need to be updated in future versions of 
+# UTXOracle as Bitcoin’s purchasing power changes. We also assign a relative 
+# weight to the smooth stencil compared to the spiked stencil. Historical testing has 
+# shown that a weighting ratio of 0.65 to 1 gives the best results.
+
+# Once the stencils have been slid across the full range, we identify the position with 
+# the highest score. This gives us a rough estimate of the price, accurate to within 
+# about 0.5 percent.
+
+
 
 # set up scores for sliding the stencil
 best_slide        = 0
@@ -1097,7 +1090,7 @@ max_slide =  201   # $5k
 for slide in range(min_slide,max_slide):
     
     #shift the bell curve by the slide
-    shifted_curve = output_bell_curve_bin_counts[left_p001+slide:right_p001+slide]
+    shifted_curve = output_histogram_bin_counts[left_p001+slide:right_p001+slide]
     
     #score the smoothslide by multiplying the curve by the stencil
     slide_score_smooth = 0.0
@@ -1122,17 +1115,17 @@ for slide in range(min_slide,max_slide):
     total_score += slide_score
         
 # estimate the usd price of the best slide
-usd100_in_btc_best = output_bell_curve_bins[center_p001+best_slide]
+usd100_in_btc_best = output_histogram_bins[center_p001+best_slide]
 btc_in_usd_best = 100/(usd100_in_btc_best)
 
 #find best slide neighbor up
-neighbor_up = output_bell_curve_bin_counts[left_p001+best_slide+1:right_p001+best_slide+1]
+neighbor_up = output_histogram_bin_counts[left_p001+best_slide+1:right_p001+best_slide+1]
 neighbor_up_score = 0.0
 for n in range(0,len(spike_stencil)):
     neighbor_up_score += neighbor_up[n]*spike_stencil[n]
 
 #find best slide neighbor down
-neighbor_down = output_bell_curve_bin_counts[left_p001+best_slide-1:right_p001+best_slide-1]
+neighbor_down = output_histogram_bin_counts[left_p001+best_slide-1:right_p001+best_slide-1]
 neighbor_down_score = 0.0
 for n in range(0,len(spike_stencil)):
     neighbor_down_score += neighbor_down[n]*spike_stencil[n]
@@ -1145,7 +1138,7 @@ if neighbor_down_score > neighbor_up_score:
     neighbor_score = neighbor_down_score
 
 #get best neighbor usd price
-usd100_in_btc_2nd = output_bell_curve_bins[center_p001+best_slide+best_neighbor]
+usd100_in_btc_2nd = output_histogram_bins[center_p001+best_slide+best_neighbor]
 btc_in_usd_2nd = 100/(usd100_in_btc_2nd)
 
 #weight average the two usd price estimates
@@ -1164,12 +1157,28 @@ print("40%..",end="",flush=True)
 
 ##############################################################################
 
-#  Part 10) Convert all outputs near round USD to the USD price used in the output
+#  Step 10 - Create Intraday Price Points
 
 ##############################################################################
 
-# In this section we converting the outputs to the price used by those outputs to
-# create a round USD amount. we also further remove micro round sat amounts (new in v 9)
+# Using the rough price estimate and the known common fiat spending amounts, we 
+# create a window and assign a rough fiat price to every Bitcoin output. The rough 
+# price does not need to be exact, because the center of mass within this window 
+# shows how the estimate needs to be refined in order to calculate the precise 
+# average.
+
+# We set the maximum allowed range of price refinement to 25 percent in either 
+# direction. This range accounts for possible errors in the rough estimate, especially 
+# on highly volatile fiat price days. Note that this does not mean UTXOracle can only 
+# handle 25 percent daily price swings. The rough price estimate already captures 
+# most of the daily volatility, so the remaining error is usually much smaller.
+
+# As we did when finding the rough estimate, we need to remove round BTC 
+# amounts before refining. However, since we are not inserting outputs into a 
+# histogram at this stage, we cannot simply smooth over histogram bins. Instead, we 
+# identify and exclude round BTC amounts by checking whether an output falls within 
+# a narrow range around common round BTC values.
+
 
 
 # list of round USD prices to collect outputs from
@@ -1248,15 +1257,24 @@ print("60%..",end="",flush=True)
 
 ##############################################################################
 
-#  Part 11) Find the central output and average deviation for plot window
+#  Step 11 - Find the Exact Average Price
 
 ##############################################################################
 
-# Here we use and iterative procedure of finding a central output,
-# shifting the price ranges to re-center the data, then finding the center again.
-# This asserts that the price is the center of the largest cluster of price
-# points of the day. This has been found by testing to be better than
-# the mean or the median because we specifically need the cluster center
+# We find the exact average price using an iterative procedure that locates the 
+# central output within the cluster of rough intraday price points. The algorithm 
+# calculates the center of mass of the intraday price points and shifts the price 
+# estimate toward this center.
+
+# As the window shifts, price points drop out on one side and new ones are added on 
+# the other. This changes the distribution, so the center of mass must be recalculated 
+# each time. By repeating this process, one of two outcomes will occur: either the 
+# center price will converge to a single stable value, or it will begin to oscillate in a 
+# repeating pattern, shifting up and down by fixed amounts.
+
+# The final exact price is determined by one of two conditions: A) the converged 
+# center price, or B) the first central value where stable oscillation begins.
+
 
 # define an algorithm for finding the central price point and avg deviation
 def find_central_output(r2, price_min, price_max):
@@ -1356,15 +1374,18 @@ if date_mode:
 
 ##############################################################################
 
-#  Part 12) Generate the chart in a webpage and serve it to the browser
+# Step 12 - Generate a Price Plot HTML Page
 
 ##############################################################################
 
-# In this final section we use python to create a local webpage and serve that
-# webpage to the local browswer. We write a long string of data whose syntax is that
-# of html/javascript. We then pass python data into that string and save it as
-# an html file in the local directory. We then use python webbroswer to serve the
-# html into the local browser.
+# To display the results, we create a local webpage and serve an intraday plot using 
+# an HTML <canvas> element rendered in the user's browser. This is accomplished 
+# by generating a string that follows HTML and JavaScript syntax, defining the 
+# canvas and drawing the intraday price points as (x, y) elements.
+
+# The resulting string is saved as a local HTML file, which should automatically open 
+# in the user’s default web browser using the webbrowser.open() command.
+
 
 # geometric layout of webpage and chart
 width = 1000   # canvas width (px)
@@ -1757,8 +1778,6 @@ Want a
 '''
 
 
-
-
 # name the file with dates or blocks
 filename = ".html"
 if date_mode:
@@ -1773,133 +1792,6 @@ with open(filename, "w") as f:
     f.write(html_content)
 webbrowser.open('file://' + os.path.realpath(filename))
 
-
-
-##############################################################################
-
-#  License
-
-##############################################################################
-
-
-# UTXOracle License
-#
-# Version 1.0 — May 2025
-#
-# This is a custom license written specifically for the UTXOracle project. It
-# reflects the unique nature of Bitcoin data: namely, that long-term confirmed
-# data can achieve consensus across nodes, while real-time or mempool-based data
-# inherently cannot. This license is designed to:
-#
-# - Encourage wide, free use of UTXOracle for consensus-compatible purposes;
-# - Prevent confusion or misuse of the term "UTXOracle" for outputs not derived
-#   from consensus logic;
-# - Retain commercial and naming rights for live-streamed or real-time products.
-#
-# This license is not OSI-approved, but it is written in good faith to balance
-# decentralization, reproducibility, and responsible innovation.
-#
-# Section 1: Definitions
-#
-# “UTXOracle Local” refers to the open-source software made available by the
-# author for calculating the 24-hour average confirmed price and the recent
-# 144-block window price using confirmed Bitcoin transactions.
-#
-# “Consensus-Compatible Use” means:
-# - Running UTXOracle Local to generate the daily average confirmed block price
-#   (“UTXOracle Consensus Price”), or
-# - Running UTXOracle Local to generate the price from the most recent 144
-#   confirmed blocks (“UTXOracle Block Window Price”),
-# - Without modifying the filtering or averaging logic that produces those prices.
-#
-# “Live or Real-Time Use” means:
-# - Using mempool data,
-# - Using data from fewer than 6 confirmations at the chain tip,
-# - Generating prices that update faster than once per confirmed block,
-# - Producing streamed or pushed data outputs (APIs, trading bots, etc.).
-#
-# “The Author” refers to the creator and copyright holder of UTXOracle, reachable
-# via Twitter.com or x.com at @SteveSimple.
-#
-# Section 2: Permissions (Consensus-Compatible Use)
-#
-# 1. You are free to use, modify, distribute, and run UTXOracle Local for
-#    Consensus-Compatible Use without cost.
-# 2. You may adapt UTXOracle Local to fit your local environment (e.g., paths,
-#    dependencies, node RPC settings) as long as you do not alter the price-filtering
-#    or averaging logic.
-# 3. You may publish or share visualizations or outputs of UTXOracle Local for
-#    educational, analytical, or public benefit purposes.
-# 4. If you are using UTXOracle Local unmodified to generate the 24-hour average
-#    or the 144-block window price, you must refer to these outputs by their
-#    canonical names:
-#    - “UTXOracle Consensus Price” for the 24-hour average from confirmed blocks
-#    - “UTXOracle Block Window Price” for the average from the most recent 144
-#      confirmed blocks
-# 5. You may not relabel or rebrand these outputs using alternative names when the
-#    original UTXOracle code remains unmodified for price logic.
-# 6. You may not use the UTXOracle Consensus Price or UTXOracle Block Window Price
-#    for commercial purposes, including but not limited to financial services, paid
-#    dashboards, or subscription-based products, without prior written permission
-#    from the Author.
-# 7. Commercial third-party node applications may integrate UTXOracle Consensus and
-#    Block Window Prices into their products so long as:
-#    - The integration adheres to all other conditions in this Section,
-#    - The price logic is unmodified,
-#    - The outputs are clearly labeled with the canonical names.
-#    - A link to the UTXOracle Live stream is included in the display.
-# 8. Any redistribution of the UTXOracle code must retain this license in its
-#    entirety, including this Section and all usage restrictions.
-# 9. Consensus-Compatible Use includes automated or repeated execution of UTXOracle
-#    Local logic to recalculate the UTXOracle Block Window Price on each new
-#    confirmed block, provided that:
-#    - Only confirmed blocks are used,
-#    - The logic remains unmodified,
-#    - The outputs are labeled with their canonical names.
-#
-# Section 3: Restrictions on Naming and Representation
-#
-# 1. If you modify the price logic (e.g., change filtering thresholds, averaging
-#    methods, or block selection rules), you must not use the following terms to
-#    describe your output:
-#    - “UTXOracle Consensus Price”
-#    - “UTXOracle Block Window Price”
-#    - Any term incorporating “UTXOracle” to describe the price output
-# 2. These terms are reserved exclusively for outputs derived from unmodified
-#    consensus-compatible logic as defined by the Author.
-# 3. You may not use the UTXOracle name, logo, or associated branding for any fork
-#    or derivative project without written permission.
-#
-# Section 4: Prohibited Use (Live or Commercial Streaming)
-#
-# 1. You may not use UTXOracle (in whole or in part), or any derivative of it, to:
-#    - Generate or stream a live or real-time price feed;
-#    - Provide price updates more frequent than once per block;
-#    - Operate a trading bot, financial API, or trading-related product;
-#    - Offer a public-facing service under the name UTXOracle.
-# 2. These use cases are reserved exclusively for the Author under the name:
-#    - “UTXOracle Live”
-#    - “UTXOracle Live Price”
-#    - “Live On-Chain Price”
-# 3. To discuss licensing for live or commercial usage, contact the Author.
-#
-# Section 5: Trademark and Branding
-#
-# The following terms are being claimed as trademarks by the Author:
-# - UTXOracle
-# - UTXOracle Consensus Price
-# - UTXOracle Block Window Price
-# - UTXOracle Live
-# - UTXOracle Live Price
-# - Live On-Chain Price
-#
-# Use of these names, phrases, or related branding in public-facing products or
-# services is strictly prohibited without explicit written permission.
-#
-# Section 6: No Warranty
-#
-# This software is provided “as is,” without warranty of any kind. The Author shall
-# not be liable for any claims, damages, or losses resulting from its use.
 
 
 
