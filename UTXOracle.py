@@ -42,11 +42,14 @@
 
  # If you’re reading this from a file on your computer, then you already have the
  # program. If you’re reading this off a website, you need to download it to your
- # computer. You can do this by simply typing:
+ # computer. You can do this with the simple command "curl -O https://utxo.live/oracle/UTXOracle.py".
+ # It will download this single file as UTXOracle.py. Then run the program with
+ # "python3 UTXOracle.py" which will find yesterday's price by default. To run the program
+ # on different days, and up to the latest block, type "python3 UTXOracle.py -h"
+ # to see the command options.
 
- # If you’re an experienced coder, you’re probably already annoyed by this
- # introduction. That’s because this program is not written for you. This program
- # violates the most basic coder principles. It is a single file that runs top to bottom. 
+ # If you’re an experienced coder, you’ll notice many inefficiencies in this code.
+ # It is a single file that runs top to bottom. 
  # It doesn’t not make use of advanced libraries that would make the code more
  # efficient at the cost of third party dependence. It repeats code for clarity instead of
  # defining functions where the user has to constantly scroll up and down and to
@@ -61,7 +64,7 @@
 # Step 2 - Establish RPC Connection................Line 206
 # Step 3 - Check Dates.............................Line 315
 # Step 4 - Find Block Hashes.......................Line 409
-# Step 5 - Initial Histogram.......................Line 589
+# Step 5 - Initialize Histogram....................Line 589
 # Step 6 - Load Histogram from Transaction Data....Line 646
 # Step 7 - Remove Round Bitcoin Amounts............Line 889
 # Step 8 - Construct the Price Finding Stencil.....Line 971
