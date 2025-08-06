@@ -121,7 +121,7 @@ block_times_needed = []
 import sys
 def print_help():
     help_text = """
-Usage: python script.py [options]
+Usage: python3 UTXOracle.py [options]
 
 Options:
   -h               Show this help message
